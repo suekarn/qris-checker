@@ -1,23 +1,26 @@
-import fs from 'fs';
-import path from 'path';
+export default async function handler(req, res) {
+  const KV_URL = process.env.KV_REST_API_URL;
+  const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 
-export default function handler(req, res) {
-  // Lokasi file vouchers.json di root direktori
-  const filePath = path.join(process.cwd(), 'vouchers.json');
+  if (!KV_URL || !KV_TOKEN) {
+    return res.status(500).json({ status: 'ERROR', message: 'Environment variables Upstash belum terkonfigurasi' });
+  }
+
+  const nominal = req.query.amount || req.body?.amount || "1000";
+  const key = `vouchers:${nominal}`;
 
   try {
-    // 1. Baca data stok voucher
-    const fileData = fs.readFileSync(filePath, 'utf8');
-    const vouchers = JSON.parse(fileData);
+    // Ambil sekaligus hapus 1 voucher terdepan dari Redis (perintah LPOP)
+    const response = await fetch(`${KV_URL}/lpop/${key}`, {
+      headers: {
+        Authorization: `Bearer ${KV_TOKEN}`,
+      },
+    });
 
-    // 2. Tentukan nominal yang dicari (default nominal "1000")
-    const nominal = req.query.amount || req.body?.amount || "1000";
+    const data = await response.json();
+    const kodeVoucher = data.result;
 
-    // 3. Cek ketersediaan stok
-    if (vouchers[nominal] && vouchers[nominal].length > 0) {
-      // Ambil kode voucher pertama tanpa menghapus file (atau sesuaikan sesuai kebutuhan)
-      const kodeVoucher = vouchers[nominal][0];
-
+    if (kodeVoucher) {
       return res.status(200).json({
         status: 'PAID',
         amount: nominal,
@@ -33,7 +36,7 @@ export default function handler(req, res) {
   } catch (error) {
     return res.status(500).json({
       status: 'ERROR',
-      message: 'Gagal membaca data voucher',
+      message: 'Gagal mengambil voucher dari database',
       error: error.message
     });
   }
