@@ -1,33 +1,40 @@
-global.payments = global.payments || {};
+import fs from 'fs';
+import path from 'path';
 
-export default async function handler(req, res) {
-  // Izinkan akses dari hotspot
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+export default function handler(req, res) {
+  // Lokasi file vouchers.json di root direktori
+  const filePath = path.join(process.cwd(), 'vouchers.json');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  try {
+    // 1. Baca data stok voucher
+    const fileData = fs.readFileSync(filePath, 'utf8');
+    const vouchers = JSON.parse(fileData);
 
-  const { amount } = req.query;
+    // 2. Tentukan nominal yang dicari (default nominal "1000")
+    const nominal = req.query.amount || req.body?.amount || "1000";
 
-  if (!amount) {
-    return res.status(400).json({ paid: false, message: 'Parameter amount diperlukan' });
-  }
+    // 3. Cek ketersediaan stok
+    if (vouchers[nominal] && vouchers[nominal].length > 0) {
+      // Ambil kode voucher pertama tanpa menghapus file (atau sesuaikan sesuai kebutuhan)
+      const kodeVoucher = vouchers[nominal][0];
 
-  const numericAmount = parseInt(amount, 10);
-  const payment = global.payments[numericAmount];
-
-  if (payment && payment.paid) {
-    // Hapus data setelah diambil agar tidak terpakai ulang
-    delete global.payments[numericAmount];
-
-    return res.status(200).json({
-      paid: true,
-      voucher_code: payment.voucher_code
+      return res.status(200).json({
+        status: 'PAID',
+        amount: nominal,
+        voucher: kodeVoucher
+      });
+    } else {
+      return res.status(200).json({
+        status: 'PAID',
+        amount: nominal,
+        voucher: 'Stok voucher habis'
+      });
+    }
+  } catch (error) {
+    return res.status(500).json({
+      status: 'ERROR',
+      message: 'Gagal membaca data voucher',
+      error: error.message
     });
   }
-
-  return res.status(200).json({ paid: false });
 }
